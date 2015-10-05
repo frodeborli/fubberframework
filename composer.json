@@ -1,0 +1,11 @@
+{
+    "name": "frodeborli/fubberframework",
+    "description": "Fubber Framework by Ennerd.com",
+    "authors": [
+        {
+            "name": "Frode Børli",
+            "email": "frode@ennerd.com"
+        }
+    ],
+    "require": {}
+}
