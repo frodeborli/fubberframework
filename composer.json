@@ -1,6 +1,7 @@
 {
     "name": "frodeborli/fubberframework",
     "description": "Fubber Framework by Ennerd.com",
+    "license": "MIT",
     "authors": [
         {
             "name": "Frode Børli",
