@@ -7,5 +7,16 @@
             "email": "frode@ennerd.com"
         }
     ],
-    "require": {}
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=5.5.0"
+    },
+    "require-dev": {
+        "phpdocumentor/phpdocumentor": "2.*"
+    },
+    "autoload": {
+        "psr-0": {
+            "Fubber\\": "src/"
+        }
+    }
 }

@@ -1,0 +1,30 @@
+<?php
+namespace Fubber;
+
+/**
+*	Lazy properties trait. Whenever a class uses this trait, properties can be added by calling $instance->lazy('propertyName', function() { return 2*2; });
+*/
+trait LazyProp {
+	protected $_lazyProps = array();
+
+	/**
+	*	Add a lazily evaluated property
+	*
+	*	@param string $name
+	*	@param callable $callback
+	*	@return $this
+	*/
+	public function lazy($name, $callback) {
+		$this->_lazyProps[$name] = $callback;
+		return $this;
+	}
+
+	public function __get($name) {
+		if(isset($this->_lazyProps[$name]))
+			return $this->$name = call_user_func($this->_lazyProps[$name]);
+		if(method_exists($this, $methodName = 'get'.ucfirst($name)))
+			return $this->$name = $this->$methodName();
+		throw new Exception("Uninitialized property '$name' in '".get_called_class()."' ($methodName)");
+	}
+}
+

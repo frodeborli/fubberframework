@@ -1,0 +1,314 @@
+<?php
+namespace Fubber\Db;
+use Fubber\Parsing\StringParser;
+
+/**
+*	Represents a subset of data from a class that extends Table. Allows filtering of the data.
+*/
+class TableSet implements \IteratorAggregate {
+	protected $_class;
+	protected $_wheres = array();
+	protected $_order = NULL;
+	protected $_orderDesc = FALSE;
+	protected $_limit = 1000;
+	protected $_offset = 0;
+	protected $_fields = '*';
+	protected $_joins = array();
+	protected $_noLimit = FALSE;
+	protected $_cache = array();
+
+
+	public function __construct($class) {
+//echo "CONSTRUCT TableSet($class)<br>\n";
+		$this->_class = $class;
+	}
+
+	public function parseWhereFromString($where) {
+		$this->_cache = array();
+		if($p = strpos($where, ' >= '));
+		else if($p = strpos($where, ' <= '));
+		else if($p = strpos($where, ' = '));
+		else if($p = strpos($where, ' > '));
+		else if($p = strpos($where, ' < '));
+		else throw new Exception("Invalid or missing operator");
+		$res = array(substr($where, 0, $p));
+		$where = substr($where, $p);
+		if(strpos($where, ' >= ')===0) {
+			$res[] = '>=';
+			$rest = substr($where, 4);
+		} else if(strpos($where, ' <= ')===0) {
+			$res[] = '<=';
+			$rest = substr($where, 4);
+		} else if($where[0]==" " && $where[2]==" " && ($where[1]=='=' || $where[1]=='>' || $where[1]=='<')) {
+			$res[] = $where[1];
+			$rest = substr($where, 3);
+		}
+		if($rest[0]=='"' && $rest[strlen($rest)-1]=='"') {
+			$res[] = substr($rest, 1, -1);
+		} else if($rest[0]=="'" && $rest[strlen($rest)-1]=="'") {
+			$res[] = substr($rest, 1, -1);
+		} else if($rest==='NULL') {
+			$res[] = NULL;
+		} else if(is_numeric($rest)) {
+			settype($rest, 'float');
+			$res[] = $rest;
+		} else {
+			throw new Exception("Unable to parse value from query ($rest).");
+		}
+		$this->where($res[0], $res[1], $res[2]);
+	}
+
+	protected function _buildWheres($prefix='') {
+		$wheres = array();
+		$vars = array();
+		$ins = array();
+		if($prefix!='') $prefix .= '.';
+		$_class = $this->_class;
+		foreach($this->_wheres as $where) {
+			// Validate that the field name exists
+			if(!in_array($where[0], $_class::$_cols))
+				throw new Exception("Unknown column '".$where[0]."' in '".$_class."'");
+
+			// Handle the operator
+			switch($where[1]) {
+				case '>' :
+				case '<' :
+				case '>=' :
+				case '<=' :
+				case '=' :
+					$wheres[] = $prefix.$where[0].$where[1].'?';
+					$vars[] = $where[2];
+					break;
+				case 'IN' :
+					if(!is_object($where[2]) || !($where[2] instanceof TableSet))
+						throw new Exception("Argument to IN operator must be a TableSet".get_class($where[2]));
+
+					$thatClass = $where[2]->_class;
+					if(!in_array($where[2]->_fields, $thatClass::$_cols))
+						throw new Exception("You must specify a single field on the other query on ".$thatClass);
+
+					list($thatWheres, $thatVars) = $where[2]->_buildWheres();
+
+					$subQuery = 'SELECT DISTINCT '.$where[2]->_fields.' FROM '.$thatClass::$_table;
+					if(sizeof($thatWheres)>0) {
+						$subQuery .= ' WHERE '.implode(" AND ", $thatWheres);
+						foreach($thatVars as $thatVar)
+							$vars[] = $thatVar;
+					}
+
+					$wheres[] = $prefix.$where[0].' IN ('.$subQuery.')';
+
+//					$ins[] = array($where[0], $where[1], $where[2], $prefix);
+
+					break;
+				default :
+					throw new Exception("Unsupported operator ".$where[1]." in ".$_class);
+			}
+		}
+		return array($wheres, $vars, $ins);
+	}
+
+	/**
+	*	$rows->join('SomeTable.userId=id AND SomeTable.groupId=?', array(12), array('createdDate' => 'joinedDate'))
+	*/
+	public function join($joinSpec, array $one, array $two) {
+		$this->_cache = array();
+		$this->_joins[] = array($joinSpec, $one, $two);
+		return $this;
+	}
+
+	public function count() {
+		if(isset($this->_cache['count']))
+			return $this->_cache['count'];
+		global $config;
+		$_class = $this->_class;
+		list($wheres,$vars) = $this->_buildWheres();
+		$sql = 'SELECT COUNT(*) FROM '.$_class::$_table;
+		if(sizeof($wheres)>0) $sql .= ' WHERE '.implode(" AND ", $wheres);
+		$res = $config->db->queryField($sql, $vars, $_class);
+		return $this->_cache['count'] = intval($res);
+	}
+
+	protected function _buildSql() {
+		if(isset($this->_cache['buildSql']))
+			return $this->_cache['buildSql'];
+
+		global $config;
+		$_class = $this->_class;
+		$fields = array();
+		$tables = array();
+		list($wheres, $vars) = $this->_buildWheres();
+
+		if($this->_fields==='*') {
+			$fields[] = $_class::$_table.'.*';
+		} else {
+			// Validate fields
+			if(!is_string($this->_fields)) throw new Exception("Fields must be specified as a string when querying ".$_class);
+			$parts = explode(",", $this->_fields);
+			foreach($parts as $part) {
+				$part = trim($part);
+				if(!in_array($part, $_class::$_cols))
+					throw new Exception("Unknown column ".$part." in ".$_class);
+				$fields[] = $_class::$_table.'.'.$part;
+			}
+		}
+		if(sizeof($this->_joins)>0) {
+			$joinNum = 1;
+			foreach($this->_joins as $join) {
+				$p = new StringParser($join[0], TRUE);
+				$nextVar = function() use ($p, $_class) {
+					$res = array();
+					$a = $p->consume();
+					if($p->type !== StringParser::CONSUMED_WORD) throw new QueryException("Expects a [column name] or [table name].[column name] in join statement.");
+					$dot = $p->consume();
+					if($p->type === StringParser::CONSUMED_SYMBOLS && $dot === '.') {
+						$col = $p->consume();
+						if($p->type !== StringParser::CONSUMED_WORD) throw new QueryException("Expects a column name after '$a.' in join statement.");
+						if(!in_array($col, $a::$_cols)) throw new QueryException("Unknown column '$a.$col' in join statement.");
+						return array($a, $col);
+					} else {
+						$p->push($dot);
+						return $a;
+					}
+				};
+
+				$joinWheres = array();
+				while(TRUE) {
+					$part1 = $nextVar();
+					$eq = $p->consume();
+					if($p->type !== StringParser::CONSUMED_SYMBOLS || ($eq !== '=' && $eq !== '=?')) throw new QueryException("Expects the '=' or '=?' operator in join statement, got '$eq'.");
+					$toAdd = array();
+					if($eq === '=') {
+						$part2 = $nextVar();
+						if(is_array($part1))
+							$joinWheres[] = array($part1, $part2);
+						else
+							$joinWheres[] = array($part2, $part1);
+					} else {
+						$joinWheres[] = array($part1, '?', array_shift($join[1]));
+					}
+					$peek = $p->consume();
+					if($peek === FALSE) {
+						break;
+					}
+					if($p->type !== StringParser::CONSUMED_WORD || $peek !== 'AND') {
+						throw new QueryException("Unexpected '$peek' in join statement. Expected 'AND' or nothing.");
+					}
+				}
+
+				// Check that this join does not use multiple tables. Can't do that without calling ->join multiple times
+				$joinTables = array();
+				foreach($joinWheres as $joinWhere) {
+					if(is_array($joinWhere[0])) {
+						$joinTables[$joinWhere[0][0]] = true;
+					}
+				}
+				if(sizeof($joinTables)!==1) throw new QueryException("Can't use a single join that spans multiple tables (".implode(",",array_keys($tables)).").");
+
+				// joinSpec should be fine
+				$arrayKeys = array_keys($joinTables);
+				$joinClass = array_shift($arrayKeys);
+				$tables[] = $joinClass::$_table.' AS t'.$joinNum;
+				$joinFields = $join[sizeof($join)-1];
+				foreach($joinFields as $from => $to) {
+					if(!in_array($from, $joinClass::$_cols)) throw new QueryException("Column '$from' not found in class '$joinClass'.");
+					$fields[] = 't'.$joinNum.'.'.$from.' AS '.$to;
+				}
+
+				foreach($joinWheres as $joinWhere) {
+					if($joinWhere[1]==='?') {
+						$wheres[] = 't'.$joinNum.'.'.$joinWhere[0][1].'=?';
+						$vars[] = $joinWhere[2];
+					} else {
+						$wheres[] = 't'.$joinNum.'.'.$joinWhere[0][1].'='.$_class::$_table.'.'.$joinWhere[1];
+					}
+				}
+			}
+			$joinNum++;
+		}
+
+		$sql = 'SELECT '.implode(",", $fields).' FROM '.$_class::$_table;
+		if(sizeof($tables)>0) $sql .= ','.implode(",", $tables);
+
+		if(sizeof($wheres)>0) $sql .= ' WHERE '.implode(" AND ", $wheres);
+		if($this->_order) {
+			if(!in_array($this->_order, $_class::$_cols))
+				throw new Exception("Unknown column ".$where[0]." in ".$_class);
+			$sql .= ' ORDER BY '.$_class::$_table.'.'.$this->_order;
+			if($this->_orderDesc)
+				$sql .= ' DESC';
+		}
+		if(!$this->_noLimit) {
+			if($this->_limit < 1) throw new Exception("The limit must be at least 1 when querying ".$_class);
+			if($this->_offset < 0) throw new Exception("The offset must not be negative when querying ".$_class);
+			$sql .= ' LIMIT '.$this->_offset.','.$this->_limit;
+		}
+		return $this->_cache['buildSql'] = array($sql, $vars);
+	}
+
+	public function field($field) {
+		return $this->fields($field);
+	}
+
+	public function fields($fields) {
+		$this->_cache = array();
+		$this->_fields = $fields;
+		return $this;
+	}
+
+	public function one() {
+		unset($this->_cache['buildSql']);
+
+		global $config;
+		$_class = $this->_class;
+		$limit = $this->_limit;
+		$this->_limit = 1;
+		list($sql, $vars) = $this->_buildSql();
+		$this->_limit = $limit;
+		return $config->db->queryOne($sql, $vars, $_class);
+	}
+
+	public function column($fieldName) {
+		unset($this->_cache['buildSql']);
+
+		global $config;
+		$fields = $this->_fields;
+		$this->fields = $fieldName;
+		list($sql, $vars) = $this->_buildSql();
+		$res = $config->db->queryColumn($sql, $vars);
+		$this->_fields = $fields;
+		return $res;
+	}
+
+	public function getIterator() {
+		global $config;
+		$_class = $this->_class;
+		list($sql, $vars) = $this->_buildSql();
+		if($this->_fields === '*')
+			$res = $config->db->query($sql, $vars, $_class);
+		else
+			$res = $config->db->query($sql, $vars, 'stdClass');
+		return new ArrayIterator($res);
+	}
+
+	public function where($field, $op, $value) {
+		$this->_cache = array();
+		$this->_wheres[] = array($field, $op, $value);
+		return $this;
+	}
+
+	public function order($field, $desc = FALSE) {
+		$this->_cache = array();
+		$this->_order = $field;
+		$this->_orderDesc = $desc;
+		return $this;
+	}
+
+	public function limit($limit, $offset = 0) {
+		$this->_cache = array();
+		$this->_limit = intval($limit);
+		$this->_offset = intval($offset);
+		return $this;
+	}
+}
+
