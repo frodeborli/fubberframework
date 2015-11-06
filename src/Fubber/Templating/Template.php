@@ -40,7 +40,7 @@ class Template implements ITemplate {
 		$body = ob_get_contents();
 		ob_end_clean();
 		
-		return new \Fubber\Response($this->httpStatus, $this->headers, $body);
+		return new \Fubber\Response($this->httpCode, $this->headers, $body);
 	}
 	
 	public static $head = array();
