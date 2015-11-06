@@ -1,5 +1,5 @@
 <?php
-namespace Fubber;
+namespace Fubber\Templating;
 
 /**
 * Simple PHP-based template engine. Example usage:
@@ -13,7 +13,36 @@ namespace Fubber;
 * ?>
 * </code>
 */
-class Template {
+class Template implements ITemplate {
+	
+	public $httpCode = 200;
+	public $httpReason = null;
+	public $headers = [];
+	
+	
+	/**
+	 * @see \Fubber\Templating\ITemplate::create
+	 */
+	public static function create($path, array $vars=array()) {
+		$template = new self(\Fubber\Kernel::$instance->config['views'].'/'.$path.'.php');
+		foreach($vars as $k => $v) {
+			$template->$k = $v;
+		}
+		return $template;
+	}
+	
+	/**
+	 * @see \Fubber\Templating\ITemplate::getResponse
+	 */
+	public function getResponse() {
+		ob_start();
+		$this->render();
+		$body = ob_get_contents();
+		ob_end_clean();
+		
+		return new \Fubber\Response($this->httpStatus, $this->headers, $body);
+	}
+	
 	public static $head = array();
 
 	/**

@@ -12,13 +12,22 @@ use \Phroute\Phroute\RouteCollector;
  */
 class Kernel {
     
+    public static $instance;
+    
+    /**
+     * Used for caching controllers that handle responses and other singletons.
+     * 
+     * @see \Fubber\Router\HandlerResolver
+     */
+    public $instanceCache = [];
+    
     public $config;
     
     /**
      * Serve a request and exit
      */
     public static function serve(array $config) {
-        $kernel = new Kernel($config);
+        self::$instance = $kernel = new Kernel($config);
         
         /**
          * getallheaders only exists within apache
@@ -43,15 +52,45 @@ class Kernel {
             substr($_SERVER["SERVER_PROTOCOL"], 5));
 
         $response = $kernel->handleRequest($request);
+        $kernel->sendResponse($response);
     }
     
     public function __construct(array $config) {
         $this->config = $config += [
             'views' => $config['root'].'/views',
             'config' => $config['root'].'/config',
+            
+            /**
+             * Dependency Injection
+             */
+            'templateFactory' => '\Fubber\Templating\Template::create',
             ];
     }
     
+    /**
+     * Will send the response, standard PHP way
+     * 
+     * @param Response $response
+     * @return null
+     */
+    public function sendResponse($response) {
+        header("HTTP/".$response->getProtocolVersion()." ".$response->getStatusCode()." ".$response->getReasonPhrase());
+        foreach($response->getHeaders() as $name => $values) {
+            foreach ($values as $value) {
+                header(sprintf('%s: %s', $name, $value), false);
+            }
+        }
+        
+        $body = $response->getBody();
+        while (!$body->eof()) {
+            $buf = $body->read(1048576);
+            // Using a loose equality here to match on '' and false.
+            if ($buf == null) {
+                break;
+            } else echo $buf;
+        }
+    }
+
     public function getHandlerResolver() {
         return new Router\HandlerResolver();
     }
@@ -103,11 +142,11 @@ class Kernel {
      * Handle a single request and return a Psr7\ResponseInterface
      * 
      * @param Request $request
-     * @return Psr\Http\Message\ResponseInterface
+     * @return \Psr\Http\Message\ResponseInterface
      */
-    public function handleRequest(Request $request) {
+    public function handleRequest(\Psr\Http\Message\RequestInterface $request) {
         $dispatcher = $this->getDispatcher();
         
-        $dispatcher->dispatch($request->getMethod(), $request->getUri()->getPath());
+        return $dispatcher->dispatch($request->getMethod(), $request->getUri()->getPath());
    }
 }

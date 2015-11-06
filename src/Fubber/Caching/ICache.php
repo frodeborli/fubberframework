@@ -1,5 +1,5 @@
 <?php
-namespace Fubber;
+namespace Fubber\Caching;
 
 /**
 *	Cache provider interface.

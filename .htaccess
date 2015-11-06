@@ -13,7 +13,7 @@ RewriteEngine on
 RewriteCond %{REQUEST_FILENAME} !-f
 
 # test the requested document is not a real directory
-RewriteCond %{REQUEST_FILENAME} !-d
+#RewriteCond %{REQUEST_FILENAME} !-d
 
 # test the requested document is not the favicon.ico (if you do not have one,
 # else it would have been catched by the first test). As we do not want to launch

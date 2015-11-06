@@ -1,4 +1,4 @@
 <?php return [
-	'GET /' => '\Fubber\SampleApp\SampleController->handler',
-	'GET /static' => '\Fubber\SampleApp\SampleController::staticHandler'
+	'GET /' => '\Fubber\SampleApp\SampleController::front',
+	'GET /random' => '\Fubber\SampleApp\SampleController::random',
 ];

@@ -1,6 +1,6 @@
 <?php
 namespace Fubber\Db;
-use Fubber\ICache;
+use Fubber\Caching\ICache;
 
 /**
 *	Cache that uses the database as a backend. Should perform quite well for a small site.

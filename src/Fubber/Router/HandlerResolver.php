@@ -1,25 +1,29 @@
 <?php
 namespace Fubber\Router;
-use \Phroute\Phroute\HandlerResolverInterface;
+use Fubber\Kernel;
+use Phroute\Phroute\HandlerResolverInterface;
 
 class HandlerResolver implements HandlerResolverInterface {
     public function resolve ($handler)
 	{
+		$kernel = Kernel::$instance;
+		
 	    if(is_callable($handler)) {
-	        die("A");
 	        return $handler;
 	    }
 	    else if(is_string($handler)) {
 	        // SomeController->someMethod will instantiate the controller
 	        $info = explode("->", $handler);
-	        if(class_exists($info[0])) {
+	        
+	        if(isset($kernel->instanceCache[$info[0]])) {
+	        	$info = [$kernel->instanceCache[$info[0]], $info[1]];
+	        } else if(class_exists($info[0])) {
 	            $className = $info[0];
-	            $info = [new $className(), $info[1]];
+	            $kernel->instanceCache[$className] = new $className();
+	            $info = [$kernel->instanceCache[$className], $info[1]];
 	        }
 	        if(is_callable($info))
 	            return $info;
-            var_dump($info);
-	        die("OK");
 	    }
 	    
 	    throw new Exception("Unable to resolve handler '".$handler."'.");
