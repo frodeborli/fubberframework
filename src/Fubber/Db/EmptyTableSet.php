@@ -27,6 +27,6 @@ class EmptyTableSet extends TableSet {
 	}
 
 	public function getIterator() {
-		return new EmptyIterator();
+		return new \EmptyIterator();
 	}
 }

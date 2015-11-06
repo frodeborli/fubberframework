@@ -2,3 +2,27 @@ php_flag display_startup_errors on
 php_flag display_errors on
 php_flag html_errors on
 php_flag log_errors on
+
+php_value   error_reporting         2047
+
+# always activate modRewrite on this directory
+# (do not forget it, even if you activated it on the Virtualhost)
+RewriteEngine on
+
+# test the requested document is not a real file (like a css or js or even index.php or update.php)
+RewriteCond %{REQUEST_FILENAME} !-f
+
+# test the requested document is not a real directory
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# test the requested document is not the favicon.ico (if you do not have one,
+# else it would have been catched by the first test). As we do not want to launch
+# the whole Drupal environment to imply return a 404 for the favicon.
+# you could see other apache rules for this with the File directive
+RewriteCond %{REQUEST_URI} !=/favicon.ico
+
+# still there, ok so take the whole request things (without the hostname) and give it to
+# the index.php file in the 'q' GET argument. Then stop the rewriting process (L) and add any
+# GET argument after a ? in the request after this q argument (QSA)
+RewriteRule ^(.*)$ bootstrap.php [L,QSA]
+

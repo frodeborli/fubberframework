@@ -9,4 +9,14 @@ namespace Fubber;
 */
 class Config {
 	use LazyProp;
+
+	public function __construct(array $initial=array()) {
+		foreach($initial as $key => $value) {
+			if(is_callable($value))
+				$this->lazy($key, $value);
+			else
+				$this->$key = $value;
+		}
+	}
+
 }

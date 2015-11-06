@@ -1,6 +1,7 @@
 <?php
 namespace Fubber\Db;
 use Fubber\Parsing\StringParser;
+use Fubber\ValidationException;
 
 /**
 *	Represents tabular data from any database backend.

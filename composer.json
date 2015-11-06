@@ -11,7 +11,10 @@
     ],
     "minimum-stability": "dev",
     "require": {
-        "php": ">=5.5.0"
+        "php": ">=5.5.0",
+        "phroute/phroute": "dev-master",
+        "psr/http-message": "^1.0@dev",
+        "guzzlehttp/psr7": "^1.0@dev"
     },
     "require-dev": {
         "phpdocumentor/phpdocumentor": "2.*"
